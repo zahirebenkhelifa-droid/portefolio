@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Écran partagé</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root {
+    --bg: #14181f;
+    --panel: #1d232d;
+    --panel-raised: #262d39;
+    --border: #333c4a;
+    --text: #e7e9ee;
+    --muted: #8b93a1;
+    --accent: #f2b705;
+    --accent-dim: #7a640a;
+    --blurcolor: #7dd3fc;
+    --ok: #4ade80;
+    --err: #f87171;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% -10%, rgba(242,183,5,0.06), transparent 40%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    color: var(--text);
+    font-family: var(--sans);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .frame { width: 100%; max-width: 620px; }
+
+  .lamp { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .lamp .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-dim);
+    box-shadow: 0 0 0 3px transparent;
+    transition: background .3s, box-shadow .3s;
+  }
+  .lamp.live .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(242,183,5,0.15); }
+  .lamp span.label { font-size: 13px; color: var(--muted); letter-spacing: 0.02em; }
+
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14.5px; margin: 0 0 28px; max-width: 52ch; line-height: 1.5; }
+
+  .switch { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
+  .switch button {
+    flex: 1; padding: 9px 12px; background: transparent; border: none; border-radius: 7px;
+    color: var(--muted); font-size: 14px; font-family: var(--sans); font-weight: 550; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .switch button.active { background: var(--panel-raised); color: var(--text); }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+  .panel + .panel { margin-top: 16px; }
+
+  .hidden { display: none !important; }
+
+  p.help { color: var(--muted); font-size: 13.5px; line-height: 1.55; margin: 0 0 16px; }
+
+  button.primary {
+    width: 100%; padding: 13px 16px; border-radius: 9px; border: none;
+    background: var(--accent); color: #1a1400; font-size: 15px; font-weight: 650;
+    font-family: var(--sans); cursor: pointer; transition: filter .15s, transform .05s;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:active { transform: scale(0.99); }
+  button.primary:disabled { background: var(--panel-raised); color: var(--muted); cursor: not-allowed; }
+
+  .code-row { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; padding: 12px 14px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 15px; letter-spacing: 0.03em;
+  }
+  input[type=text]::placeholder { color: #545c6b; }
+  input[type=text]:focus { outline: none; border-color: var(--accent-dim); }
+  button.copy {
+    padding: 0 16px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--panel-raised); color: var(--text); font-family: var(--sans); font-size: 13.5px; cursor: pointer;
+  }
+  button.copy:hover { border-color: var(--accent-dim); }
+
+  .code-display {
+    font-family: var(--mono); font-size: 22px; letter-spacing: 0.04em;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 14px 16px; margin-bottom: 12px; word-break: break-all;
+  }
+
+  .log {
+    margin-top: 16px; font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+    line-height: 1.7; max-height: 110px; overflow-y: auto;
+  }
+  .log div.err { color: var(--err); }
+  .log div.ok { color: var(--ok); }
+
+  video { width: 100%; border-radius: 10px; background: #000; display: block; border: 1px solid var(--border); }
+
+  .field-label { font-size: 13px; color: var(--muted); margin-bottom: 8px; display: block; }
+
+  /* --- configuration : zone visible + flou --- */
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbtn {
+    padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-raised); color: var(--text); font-family: var(--sans); font-size: 13px; cursor: pointer;
+  }
+  .toolbtn:hover { border-color: var(--accent-dim); }
+  .toolbtn.active-crop { border-color: var(--accent); color: var(--accent); }
+  .toolbtn.active-blur { border-color: var(--blurcolor); color: var(--blurcolor); }
+
+  .stage {
+    position: relative; display: inline-block; max-width: 100%;
+    border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
+    line-height: 0; user-select: none;
+  }
+  .stage video { max-width: 100%; display: block; }
+  #overlayLayer { position: absolute; inset: 0; cursor: crosshair; }
+  .zone-box { position: absolute; border: 2px solid var(--accent); background: rgba(242,183,5,0.12); box-sizing: border-box; }
+  .zone-box.blur { border-color: var(--blurcolor); background: rgba(125,211,252,0.14); }
+  .zone-remove {
+    position: absolute; top: -10px; right: -10px; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    font-size: 13px; line-height: 18px; text-align: center; cursor: pointer;
+  }
+  .zone-status { font-size: 12.5px; color: var(--muted); margin: 10px 0 14px; }
+
+  .fps-control { margin: 4px 0 16px; }
+  .fps-control label { display: block; margin-bottom: 8px; }
+  #fpsSlider { width: 100%; accent-color: var(--accent); }
+
+  .live-controls { margin-top: 12px; }
+  .toolbtn.active-cam { border-color: var(--ok); color: var(--ok); }
+
+  .incoming-call {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--accent-dim);
+    background: rgba(242,183,5,0.07);
+  }
+  .incoming-text { margin: 0 0 10px; font-size: 13.5px; color: var(--text); }
+  .mono-inline { font-family: var(--mono); color: var(--accent); }
+  .incoming-actions { display: flex; gap: 8px; }
+  .accept-btn, .reject-btn {
+    flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border);
+    font-family: var(--sans); font-size: 13.5px; cursor: pointer;
+  }
+  .accept-btn { background: var(--accent); color: #1a1400; border-color: var(--accent); font-weight: 600; }
+  .accept-btn:hover { filter: brightness(1.08); }
+  .reject-btn { background: var(--panel-raised); color: var(--text); }
+  .reject-btn:hover { border-color: var(--err); color: var(--err); }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="lamp" id="lamp">
+    <div class="dot"></div>
+    <span class="label" id="lampLabel">hors ligne</span>
+  </div>
+
+  <h1>Écran partagé</h1>
+  <p class="sub">Diffuse ton écran directement à une personne distante, sans installer ni héberger quoi que ce soit. Tu peux limiter la zone visible, flouter des zones sensibles, et tu valides toi-même chaque connexion avant qu'elle ne commence.</p>
+
+  <div class="switch">
+    <button id="tabHost" class="active">Partager mon écran</button>
+    <button id="tabView">Regarder un écran</button>
+  </div>
+
+  <!-- HOST -->
+  <div class="panel" id="hostPanel">
+    <p class="help" id="hostIntro">Clique sur le bouton, puis choisis <strong>« Écran entier »</strong> dans la fenêtre qui s'ouvre (et non une fenêtre précise) si tu veux que la personne distante te voie changer de fenêtre.</p>
+    <button class="primary" id="startShareBtn">Partager mon écran</button>
+
+    <!-- Étape de configuration : zone visible + flou -->
+    <div id="configBlock" class="hidden" style="margin-top:18px;">
+      <p class="help">Trace un rectangle pour définir la zone visible (facultatif — laisse vide pour tout partager). Ajoute autant de zones de flou que nécessaire pour masquer des infos sensibles.</p>
+      <div class="toolbar">
+        <button class="toolbtn" id="modeCropBtn">Définir la zone visible</button>
+        <button class="toolbtn" id="modeBlurBtn">Ajouter une zone de flou</button>
+        <button class="toolbtn" id="resetZonesBtn">Réinitialiser</button>
+      </div>
+      <div class="stage" id="cropStage">
+        <video id="previewVideo" muted autoplay playsinline></video>
+        <div id="overlayLayer"></div>
+      </div>
+      <div class="zone-status" id="zoneStatus">Zone visible : plein écran · 0 zone de flou</div>
+      <div class="fps-control">
+        <label for="fpsSlider">Débit vidéo : <span id="fpsValue" class="mono-inline">15</span> im/s</label>
+        <input type="range" id="fpsSlider" min="5" max="30" step="1" value="15">
+      </div>
+      <button class="primary" id="confirmConfigBtn">Commencer le partage</button>
+    </div>
+
+    <div id="hostCodeBlock" class="hidden" style="margin-top:16px;">
+      <span class="field-label">Code à transmettre</span>
+      <div class="code-row">
+        <div class="code-display" id="hostCode" style="flex:1;">…</div>
+        <button class="copy" id="copyCodeBtn">Copier</button>
+      </div>
+    </div>
+
+    <div id="liveControls" class="hidden live-controls">
+      <button class="toolbtn" id="toggleCamBtn">Activer caméra et micro</button>
+      <div class="fps-control" style="margin-top:12px;">
+        <label for="fpsSliderLive">Débit vidéo : <span id="fpsValueLive" class="mono-inline">15</span> im/s</label>
+        <input type="range" id="fpsSliderLive" min="5" max="30" step="1" value="15">
+      </div>
+      <button class="reject-btn" id="stopShareBtn" style="margin-top:8px; width:100%;">Arrêter le partage</button>
+    </div>
+
+    <div id="incomingCallBlock" class="hidden incoming-call">
+      <p class="incoming-text">Demande de connexion de <span id="incomingPeerId" class="mono-inline"></span></p>
+      <p class="incoming-text" id="incomingQueueNote" style="margin:-4px 0 10px; font-size:12px; color: var(--muted);"></p>
+      <div class="incoming-actions">
+        <button class="accept-btn" id="acceptCallBtn">Accepter</button>
+        <button class="reject-btn" id="rejectCallBtn">Refuser</button>
+      </div>
+    </div>
+
+    <div class="log" id="hostLog"></div>
+
+    <div id="hostEndedBlock" class="hidden" style="margin-top:16px;">
+      <p class="help">Partage terminé.</p>
+      <button class="toolbtn" id="homeFromHostBtn" style="width:100%;">Retour à l'accueil</button>
+    </div>
+  </div>
+
+  <!-- VIEWER -->
+  <div class="panel hidden" id="viewPanel">
+    <p class="help">Entre le code que la personne t'a transmis, puis connecte-toi. La personne qui partage doit accepter ta demande de son côté avant que l'image n'apparaisse.</p>
+    <div class="code-row">
+      <input type="text" id="joinCodeInput" placeholder="ex : a1b2c3d4">
+      <button class="copy" id="joinBtn">Se connecter</button>
+    </div>
+
+    <video id="remoteVideo" autoplay playsinline style="margin-top:16px; display:none;"></video>
+    <button class="toolbtn hidden" id="fullscreenBtn" style="margin-top:8px; width:100%;">Plein écran</button>
+    <button class="reject-btn hidden" id="disconnectViewBtn" style="margin-top:8px; width:100%;">Se déconnecter</button>
+
+    <div id="viewEndedBlock" class="hidden" style="margin-top:16px;">
+      <p class="help">Connexion terminée.</p>
+      <button class="toolbtn" id="homeFromViewBtn" style="width:100%;">Retour à l'accueil</button>
+    </div>
+
+    <div class="log" id="viewLog"></div>
+  </div>
+</div>
+
+<script>
+// ---------- Serveurs ICE ----------
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+];
+
+let peer = null;
+let pendingConnQueue = [];  // file des demandes de connexion en attente de confirmation manuelle
+let rawStream = null;      // flux brut de l'écran capturé (jamais envoyé tel quel)
+let localStream = null;    // flux recadré/flouté réellement envoyé
+let outputCanvas = null;
+let outCtx = null;
+let renderIntervalId = null;
+
+let cropRect = null;       // {x,y,w,h} fractions 0..1 relatives à l'image brute, null = plein écran
+let blurZones = [];        // [{x,y,w,h, el}]
+let targetFps = 15;
+
+const fpsSlider = document.getElementById("fpsSlider");
+const fpsValue = document.getElementById("fpsValue");
+const fpsSliderLive = document.getElementById("fpsSliderLive");
+const fpsValueLive = document.getElementById("fpsValueLive");
+
+function applyFpsChange(newFps) {
+  targetFps = newFps;
+  fpsValue.textContent = newFps;
+  fpsValueLive.textContent = newFps;
+  fpsSlider.value = newFps;
+  fpsSliderLive.value = newFps;
+
+  if (!outputCanvas || !localStream) return; // pas encore en diffusion, rien à remplacer
+
+  const newTrack = outputCanvas.captureStream(newFps).getVideoTracks()[0];
+  const oldTrack = localStream.getVideoTracks()[0];
+
+  localStream.removeTrack(oldTrack);
+  localStream.addTrack(newTrack);
+
+  activeCalls.forEach((call) => {
+    if (!call.peerConnection) return;
+    const sender = call.peerConnection.getSenders().find((s) => s.track && s.track.kind === "video");
+    if (sender) sender.replaceTrack(newTrack);
+  });
+
+  oldTrack.stop();
+  log("hostLog", `Débit changé : ${newFps} im/s.`);
+}
+
+fpsSlider.addEventListener("input", () => applyFpsChange(parseInt(fpsSlider.value, 10)));
+fpsSliderLive.addEventListener("input", () => applyFpsChange(parseInt(fpsSliderLive.value, 10)));
+
+// ---------- Caméra + micro (incrustation vidéo en médaillon, piste audio séparée) ----------
+let camStream = null;
+let camEnabled = false;
+let micAudioTrack = null;
+let activeCalls = [];
+const camVideo = document.createElement("video");
+camVideo.muted = true;
+camVideo.autoplay = true;
+camVideo.playsInline = true;
+
+const liveControls = document.getElementById("liveControls");
+const toggleCamBtn = document.getElementById("toggleCamBtn");
+
+toggleCamBtn.onclick = async () => {
+  if (!camEnabled) {
+    if (!camStream) {
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        camVideo.srcObject = camStream;
+        await camVideo.play().catch(() => {});
+        const audioTracks = camStream.getAudioTracks();
+        if (audioTracks.length) {
+          micAudioTrack = audioTracks[0];
+          if (localStream) localStream.addTrack(micAudioTrack);
+          activeCalls.forEach((c) => {
+            if (c.peerConnection) c.peerConnection.addTrack(micAudioTrack, localStream);
+          });
+        }
+      } catch (e) {
+        log("hostLog", "Caméra ou micro refusé(s) / indisponible(s).", "err");
+        return;
+      }
+    } else if (micAudioTrack) {
+      micAudioTrack.enabled = true;
+    }
+    camEnabled = true;
+    toggleCamBtn.textContent = "Désactiver caméra et micro";
+    toggleCamBtn.classList.add("active-cam");
+  } else {
+    camEnabled = false;
+    if (micAudioTrack) micAudioTrack.enabled = false;
+    toggleCamBtn.textContent = "Activer caméra et micro";
+    toggleCamBtn.classList.remove("active-cam");
+  }
+};
+
+// ---------- UI: bascule host / viewer ----------
+const tabHost = document.getElementById("tabHost");
+const tabView = document.getElementById("tabView");
+const hostPanel = document.getElementById("hostPanel");
+const viewPanel = document.getElementById("viewPanel");
+
+tabHost.onclick = () => {
+  tabHost.classList.add("active");
+  tabView.classList.remove("active");
+  hostPanel.classList.remove("hidden");
+  viewPanel.classList.add("hidden");
+};
+tabView.onclick = () => {
+  tabView.classList.add("active");
+  tabHost.classList.remove("active");
+  viewPanel.classList.remove("hidden");
+  hostPanel.classList.add("hidden");
+};
+
+function setLamp(live, text) {
+  const lamp = document.getElementById("lamp");
+  document.getElementById("lampLabel").textContent = text;
+  lamp.classList.toggle("live", live);
+}
+
+function log(panelId, message, kind) {
+  const el = document.getElementById(panelId);
+  const line = document.createElement("div");
+  if (kind) line.className = kind;
+  const time = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  line.textContent = `[${time}] ${message}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ---------- Étape 1 : capture brute de l'écran ----------
+const startShareBtn = document.getElementById("startShareBtn");
+const configBlock = document.getElementById("configBlock");
+const previewVideo = document.getElementById("previewVideo");
+const hostCodeBlock = document.getElementById("hostCodeBlock");
+const hostCode = document.getElementById("hostCode");
+const copyCodeBtn = document.getElementById("copyCodeBtn");
+
+startShareBtn.onclick = async () => {
+  document.getElementById("hostEndedBlock").classList.add("hidden");
+  try {
+    rawStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { displaySurface: "monitor", cursor: "always" },
+      audio: false,
+    });
+  } catch (e) {
+    log("hostLog", "Partage annulé ou refusé.", "err");
+    return;
+  }
+
+  previewVideo.srcObject = rawStream;
+  await previewVideo.play().catch(() => {});
+
+  configBlock.classList.remove("hidden");
+  startShareBtn.disabled = true;
+  startShareBtn.textContent = "Écran capturé";
+  log("hostLog", "Écran capturé. Définis la zone visible et les zones de flou si besoin, puis lance le partage.");
+
+  rawStream.getVideoTracks()[0].addEventListener("ended", handleShareEnded);
+};
+
+// ---------- Étape 2 : sélection de la zone visible + zones de flou ----------
+const overlayLayer = document.getElementById("overlayLayer");
+const modeCropBtn = document.getElementById("modeCropBtn");
+const modeBlurBtn = document.getElementById("modeBlurBtn");
+const resetZonesBtn = document.getElementById("resetZonesBtn");
+const zoneStatus = document.getElementById("zoneStatus");
+
+let drawMode = null;      // 'crop' | 'blur' | null
+let dragStart = null;
+let activeDrawEl = null;
+let cropBoxEl = null;
+
+function setMode(m) {
+  drawMode = (drawMode === m) ? null : m;
+  modeCropBtn.classList.toggle("active-crop", drawMode === "crop");
+  modeBlurBtn.classList.toggle("active-blur", drawMode === "blur");
+}
+modeCropBtn.onclick = () => setMode("crop");
+modeBlurBtn.onclick = () => setMode("blur");
+
+function updateZoneStatus() {
+  zoneStatus.textContent =
+    (cropRect ? "Zone visible : personnalisée" : "Zone visible : plein écran") +
+    ` · ${blurZones.length} zone(s) de flou`;
+}
+
+resetZonesBtn.onclick = () => {
+  cropRect = null;
+  blurZones.forEach((z) => z.el.remove());
+  blurZones = [];
+  if (cropBoxEl) { cropBoxEl.remove(); cropBoxEl = null; }
+  updateZoneStatus();
+};
+
+overlayLayer.addEventListener("mousedown", (e) => {
+  if (!drawMode) return;
+  const rect = overlayLayer.getBoundingClientRect();
+  dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  activeDrawEl = document.createElement("div");
+  activeDrawEl.className = "zone-box" + (drawMode === "blur" ? " blur" : "");
+  activeDrawEl.style.left = dragStart.x + "px";
+  activeDrawEl.style.top = dragStart.y + "px";
+  overlayLayer.appendChild(activeDrawEl);
+});
+
+overlayLayer.addEventListener("mousemove", (e) => {
+  if (!dragStart || !activeDrawEl) return;
+  const rect = overlayLayer.getBoundingClientRect();
+  const cur = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const x = Math.min(dragStart.x, cur.x), y = Math.min(dragStart.y, cur.y);
+  const w = Math.abs(cur.x - dragStart.x), h = Math.abs(cur.y - dragStart.y);
+  activeDrawEl.style.left = x + "px";
+  activeDrawEl.style.top = y + "px";
+  activeDrawEl.style.width = w + "px";
+  activeDrawEl.style.height = h + "px";
+});
+
+window.addEventListener("mouseup", () => {
+  if (!dragStart || !activeDrawEl) { dragStart = null; return; }
+  const rect = overlayLayer.getBoundingClientRect();
+  const boxRect = activeDrawEl.getBoundingClientRect();
+  const fx = (boxRect.left - rect.left) / rect.width;
+  const fy = (boxRect.top - rect.top) / rect.height;
+  const fw = boxRect.width / rect.width;
+  const fh = boxRect.height / rect.height;
+
+  if (fw < 0.01 || fh < 0.01) {
+    activeDrawEl.remove();
+  } else if (drawMode === "crop") {
+    if (cropBoxEl) cropBoxEl.remove();
+    cropBoxEl = activeDrawEl;
+    cropRect = { x: fx, y: fy, w: fw, h: fh };
+    const rm = document.createElement("div");
+    rm.className = "zone-remove";
+    rm.textContent = "×";
+    rm.onclick = (ev) => {
+      ev.stopPropagation();
+      cropBoxEl.remove();
+      cropBoxEl = null;
+      cropRect = null;
+      updateZoneStatus();
+    };
+    cropBoxEl.appendChild(rm);
+  } else if (drawMode === "blur") {
+    const zoneObj = { x: fx, y: fy, w: fw, h: fh, el: activeDrawEl };
+    const rm = document.createElement("div");
+    rm.className = "zone-remove";
+    rm.textContent = "×";
+    rm.onclick = (ev) => {
+      ev.stopPropagation();
+      activeDrawEl.remove();
+      blurZones = blurZones.filter((z) => z !== zoneObj);
+      updateZoneStatus();
+    };
+    activeDrawEl.appendChild(rm);
+    blurZones.push(zoneObj);
+  }
+  updateZoneStatus();
+  dragStart = null;
+  activeDrawEl = null;
+});
+
+// ---------- Étape 3 : composition (recadrage + flou) puis diffusion ----------
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function startComposite() {
+  if (!previewVideo.videoWidth) {
+    previewVideo.addEventListener("loadedmetadata", startComposite, { once: true });
+    return;
+  }
+
+  const VW = previewVideo.videoWidth, VH = previewVideo.videoHeight;
+  const crop = cropRect || { x: 0, y: 0, w: 1, h: 1 };
+  const cx = crop.x * VW, cy = crop.y * VH, cw = crop.w * VW, ch = crop.h * VH;
+
+  outputCanvas = document.createElement("canvas");
+  outputCanvas.width = Math.max(1, Math.round(cw));
+  outputCanvas.height = Math.max(1, Math.round(ch));
+  outCtx = outputCanvas.getContext("2d");
+
+  function renderFrame() {
+    outCtx.filter = "none";
+    outCtx.drawImage(previewVideo, cx, cy, cw, ch, 0, 0, outputCanvas.width, outputCanvas.height);
+
+    for (const zone of blurZones) {
+      const bx = zone.x * VW - cx, by = zone.y * VH - cy, bw = zone.w * VW, bh = zone.h * VH;
+      if (bx + bw < 0 || by + bh < 0 || bx > outputCanvas.width || by > outputCanvas.height) continue;
+      const pad = 24;
+      const sx = clamp(cx + bx - pad, 0, VW);
+      const sy = clamp(cy + by - pad, 0, VH);
+      const sw = clamp(bw + 2 * pad, 1, VW - sx);
+      const sh = clamp(bh + 2 * pad, 1, VH - sy);
+      outCtx.save();
+      outCtx.beginPath();
+      outCtx.rect(bx, by, bw, bh);
+      outCtx.clip();
+      outCtx.filter = "blur(18px)";
+      outCtx.drawImage(previewVideo, sx, sy, sw, sh, bx - pad, by - pad, sw, sh);
+      outCtx.restore();
+    }
+
+    if (camEnabled && camVideo.videoWidth) {
+      const size = Math.round(outputCanvas.width * 0.18);
+      const margin = Math.round(outputCanvas.width * 0.02);
+      const bx2 = outputCanvas.width - size - margin;
+      const by2 = outputCanvas.height - size - margin;
+      const camW = camVideo.videoWidth, camH = camVideo.videoHeight;
+      const side = Math.min(camW, camH);
+      const sx2 = (camW - side) / 2, sy2 = (camH - side) / 2;
+
+      outCtx.save();
+      outCtx.beginPath();
+      outCtx.arc(bx2 + size / 2, by2 + size / 2, size / 2, 0, Math.PI * 2);
+      outCtx.closePath();
+      outCtx.clip();
+      outCtx.filter = "none";
+      outCtx.drawImage(camVideo, sx2, sy2, side, side, bx2, by2, size, size);
+      outCtx.restore();
+
+      outCtx.beginPath();
+      outCtx.arc(bx2 + size / 2, by2 + size / 2, size / 2, 0, Math.PI * 2);
+      outCtx.lineWidth = 3;
+      outCtx.strokeStyle = "rgba(242,183,5,0.9)";
+      outCtx.stroke();
+    }
+
+    // Pas d'auto-planification ici : voir setInterval plus bas.
+  }
+
+  // setInterval plutôt que requestAnimationFrame : rAF est mis en pause par le
+  // navigateur dès que cet onglet n'est plus au premier plan (changement d'onglet,
+  // de fenêtre...), ce qui figerait l'image côté spectateur. setInterval continue
+  // de tourner en arrière-plan.
+  renderIntervalId = setInterval(renderFrame, 1000 / 30);
+  renderFrame();
+
+  localStream = outputCanvas.captureStream(targetFps);
+}
+
+function connectPeer() {
+  log("hostLog", "Connexion au service de signalisation…");
+  peer = new Peer({ config: { iceServers: ICE_SERVERS } });
+
+  peer.on("open", (id) => {
+    hostCode.textContent = id;
+    hostCodeBlock.classList.remove("hidden");
+    liveControls.classList.remove("hidden");
+    setLamp(true, "prêt — en attente d'un spectateur");
+    log("hostLog", "Prêt. Transmets le code ci-dessus à la personne distante.", "ok");
+  });
+
+  peer.on("connection", (conn) => {
+    pendingConnQueue.push(conn);
+    showNextPendingConn();
+  });
+
+  peer.on("error", (err) => {
+    log("hostLog", "Erreur : " + err.type, "err");
+  });
+}
+
+const incomingCallBlock = document.getElementById("incomingCallBlock");
+const acceptCallBtn = document.getElementById("acceptCallBtn");
+const rejectCallBtn = document.getElementById("rejectCallBtn");
+const stopShareBtn = document.getElementById("stopShareBtn");
+
+stopShareBtn.onclick = () => {
+  if (rawStream) {
+    rawStream.getVideoTracks().forEach((t) => t.stop()); // déclenche "ended" -> handleShareEnded()
+  }
+};
+
+function showNextPendingConn() {
+  if (pendingConnQueue.length === 0) {
+    incomingCallBlock.classList.add("hidden");
+    return;
+  }
+  const conn = pendingConnQueue[0];
+  const extra = pendingConnQueue.length - 1;
+  document.getElementById("incomingPeerId").textContent = conn.peer;
+  document.getElementById("incomingQueueNote").textContent =
+    extra > 0 ? `+ ${extra} autre(s) demande(s) en attente` : "";
+  incomingCallBlock.classList.remove("hidden");
+  log("hostLog", `Demande de connexion de ${conn.peer}.`);
+}
+
+function updateLiveStatus() {
+  const n = activeCalls.length;
+  if (n === 0) setLamp(true, "prêt — en attente d'un spectateur");
+  else if (n === 1) setLamp(true, "en direct — 1 spectateur");
+  else setLamp(true, `en direct — ${n} spectateurs`);
+}
+
+acceptCallBtn.onclick = () => {
+  if (pendingConnQueue.length === 0) return;
+  const conn = pendingConnQueue.shift();
+
+  const call = peer.call(conn.peer, localStream);
+  activeCalls.push(call);
+  log("hostLog", "Spectateur accepté — diffusion en cours.", "ok");
+  updateLiveStatus();
+  call.on("close", () => {
+    activeCalls = activeCalls.filter((c) => c !== call);
+    log("hostLog", "Spectateur déconnecté.");
+    updateLiveStatus();
+  });
+  call.on("error", (err) => {
+    log("hostLog", "Erreur d'appel : " + err, "err");
+  });
+
+  showNextPendingConn();
+};
+
+rejectCallBtn.onclick = () => {
+  if (pendingConnQueue.length === 0) return;
+  const conn = pendingConnQueue.shift();
+  conn.close();
+  log("hostLog", "Connexion refusée.");
+  showNextPendingConn();
+};
+
+document.getElementById("confirmConfigBtn").onclick = () => {
+  configBlock.classList.add("hidden");
+  startComposite();
+  connectPeer();
+};
+
+function handleShareEnded() {
+  log("hostLog", "Partage arrêté.");
+  setLamp(false, "hors ligne");
+  startShareBtn.disabled = false;
+  startShareBtn.textContent = "Partager mon écran";
+  hostCodeBlock.classList.add("hidden");
+  configBlock.classList.add("hidden");
+  incomingCallBlock.classList.add("hidden");
+  liveControls.classList.add("hidden");
+  document.getElementById("hostEndedBlock").classList.remove("hidden");
+  pendingConnQueue.forEach((c) => c.close());
+  pendingConnQueue = [];
+  if (camStream) {
+    camStream.getTracks().forEach((t) => t.stop());
+    camStream = null;
+  }
+  camEnabled = false;
+  micAudioTrack = null;
+  activeCalls = [];
+  toggleCamBtn.textContent = "Activer caméra et micro";
+  toggleCamBtn.classList.remove("active-cam");
+  if (renderIntervalId) clearInterval(renderIntervalId);
+  if (peer) peer.destroy();
+  previewVideo.srcObject = null;
+}
+
+copyCodeBtn.onclick = () => {
+  navigator.clipboard.writeText(hostCode.textContent).then(() => {
+    copyCodeBtn.textContent = "Copié";
+    setTimeout(() => (copyCodeBtn.textContent = "Copier"), 1200);
+  });
+};
+
+document.getElementById("homeFromHostBtn").onclick = () => location.reload();
+document.getElementById("homeFromViewBtn").onclick = () => location.reload();
+
+// ---------- Spectateur : rejoindre ----------
+const joinCodeInput = document.getElementById("joinCodeInput");
+const joinBtn = document.getElementById("joinBtn");
+const remoteVideo = document.getElementById("remoteVideo");
+const fullscreenBtn = document.getElementById("fullscreenBtn");
+const disconnectViewBtn = document.getElementById("disconnectViewBtn");
+
+let currentCall = null;
+let currentViewerPeer = null;
+
+fullscreenBtn.onclick = () => {
+  if (remoteVideo.requestFullscreen) {
+    remoteVideo.requestFullscreen();
+  } else if (remoteVideo.webkitRequestFullscreen) {
+    remoteVideo.webkitRequestFullscreen();
+  }
+};
+
+disconnectViewBtn.onclick = () => {
+  if (currentCall) currentCall.close();
+  if (currentViewerPeer) currentViewerPeer.destroy();
+  currentCall = null;
+  currentViewerPeer = null;
+  remoteVideo.srcObject = null;
+  remoteVideo.style.display = "none";
+  fullscreenBtn.classList.add("hidden");
+  disconnectViewBtn.classList.add("hidden");
+  document.getElementById("viewEndedBlock").classList.remove("hidden");
+  setLamp(false, "hors ligne");
+  joinBtn.disabled = false;
+  joinBtn.textContent = "Se connecter";
+  log("viewLog", "Déconnecté.");
+};
+
+joinBtn.onclick = () => {
+  const hostId = joinCodeInput.value.trim();
+  if (!hostId) return;
+
+  document.getElementById("viewEndedBlock").classList.add("hidden");
+  joinBtn.disabled = true;
+  joinBtn.textContent = "Connexion…";
+  log("viewLog", "Connexion au service de signalisation…");
+
+  const viewerPeer = new Peer({ config: { iceServers: ICE_SERVERS } });
+  currentViewerPeer = viewerPeer;
+  let waitTimeout = null;
+
+  viewerPeer.on("open", () => {
+    log("viewLog", "Demande envoyée — en attente que l'hôte accepte…");
+    viewerPeer.connect(hostId, { reliable: true });
+
+    waitTimeout = setTimeout(() => {
+      log("viewLog", "Toujours en attente : vérifie que la personne distante a bien cliqué sur \u00abAccepter\u00bb de son côté, ou que le réseau de l'un des deux ne bloque pas la connexion.", "err");
+    }, 20000);
+  });
+
+  viewerPeer.on("call", (call) => {
+    currentCall = call;
+    call.answer(); // on ne renvoie rien, on ne fait que recevoir l'image/le son
+
+    call.on("stream", (remoteStream) => {
+      clearTimeout(waitTimeout);
+      remoteVideo.srcObject = remoteStream;
+      remoteVideo.style.display = "block";
+      fullscreenBtn.classList.remove("hidden");
+      disconnectViewBtn.classList.remove("hidden");
+      log("viewLog", "Connecté — réception du flux.", "ok");
+      setLamp(true, "connecté");
+      joinBtn.textContent = "Connecté";
+    });
+
+    call.on("close", () => {
+      clearTimeout(waitTimeout);
+      currentCall = null;
+      log("viewLog", "Connexion terminée (partage arrêté par l'hôte).");
+      setLamp(false, "hors ligne");
+      remoteVideo.style.display = "none";
+      fullscreenBtn.classList.add("hidden");
+      disconnectViewBtn.classList.add("hidden");
+      document.getElementById("viewEndedBlock").classList.remove("hidden");
+      joinBtn.disabled = false;
+      joinBtn.textContent = "Se connecter";
+    });
+
+    call.on("error", (err) => {
+      clearTimeout(waitTimeout);
+      log("viewLog", "Erreur d'appel : " + err, "err");
+      joinBtn.disabled = false;
+      joinBtn.textContent = "Se connecter";
+    });
+  });
+
+  viewerPeer.on("error", (err) => {
+    log("viewLog", "Erreur : " + err.type + " — vérifie le code.", "err");
+    joinBtn.disabled = false;
+    joinBtn.textContent = "Se connecter";
+  });
+};
+</script>
+</body>
+</html>
