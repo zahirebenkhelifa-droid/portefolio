@@ -99,3 +99,6 @@ document.querySelector('#auth-sign-out').addEventListener('click', async () => {
 supabase.auth.onAuthStateChange((_event, session) => renderSession(session));
 const { data: { session } } = await supabase.auth.getSession();
 renderSession(session);
+if (new URLSearchParams(window.location.search).get('auth') === 'login' && !session) {
+  dialog.showModal();
+}
