@@ -85,6 +85,39 @@
   }
   .nav-links a:hover, .nav-links a:focus-visible{color:var(--paper);}
 
+  .auth-trigger{cursor:pointer;background:transparent;}
+
+  .auth-dialog{
+    width:min(440px, calc(100vw - 32px));
+    max-width:none;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    background:var(--bg-alt);
+    color:var(--ink);
+  }
+  .auth-dialog::backdrop{background:rgba(5,10,20,0.78);backdrop-filter:blur(3px);}
+  .auth-panel{padding:28px;}
+  .auth-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px;}
+  .auth-heading h2{font-size:1.5rem;}
+  .auth-close{font:inherit;color:var(--ink-soft);background:none;border:0;cursor:pointer;padding:4px;}
+  .auth-tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line);margin-bottom:22px;}
+  .auth-tab{font:inherit;font-size:0.82rem;color:var(--ink-soft);background:none;border:0;border-bottom:2px solid transparent;padding:10px;cursor:pointer;}
+  .auth-tab[aria-pressed="true"]{color:var(--copper);border-bottom-color:var(--copper);}
+  .auth-fields{display:grid;gap:16px;}
+  .auth-field{display:grid;gap:6px;color:var(--ink-soft);font-size:0.8rem;}
+  .auth-field[hidden]{display:none;}
+  .auth-field input{width:100%;min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--ink);font:inherit;font-size:0.88rem;}
+  .auth-field input:focus{outline:2px solid var(--copper);outline-offset:1px;}
+  .auth-submit{width:100%;cursor:pointer;}
+  .auth-submit:disabled{opacity:0.65;cursor:wait;}
+  .auth-message{min-height:1.5em;color:var(--pcb);font-size:0.8rem;}
+  .auth-message[data-error="true"]{color:#ef9b91;}
+  .auth-account{display:grid;gap:12px;}
+  .auth-account-name{font-family:'Fraunces',serif;font-size:1.3rem;color:var(--paper);}
+  .auth-account-email{color:var(--ink-soft);font-size:0.85rem;overflow-wrap:anywhere;}
+  .auth-account .btn{justify-self:start;cursor:pointer;background:transparent;}
+
   a:focus-visible, button:focus-visible{
     outline:2px solid var(--copper);
     outline-offset:3px;
@@ -301,10 +334,12 @@
   @media (max-width:760px){
     .hero{grid-template-columns:1fr;padding-top:56px;}
     .hero-diagram{order:-1;max-width:280px;}
-    .nav-links{gap:16px;}
+    .nav-links{gap:12px;flex-wrap:wrap;justify-content:flex-end;}
     .nav-links a{font-size:0.78rem;}
+    .nav-links .auth-trigger{font-size:0.75rem;padding:8px 10px;}
     .t-item{grid-template-columns:1fr;gap:6px;}
     .contact-inner{align-items:flex-start;}
+    .auth-panel{padding:22px;}
   }
 </style>
 </head>
@@ -318,9 +353,47 @@
       <a href="#projets">Projets</a>
       <a href="#parcours">Parcours</a>
       <a href="#contact">Contact</a>
+      <button class="btn btn-ghost auth-trigger" id="auth-trigger" type="button">Connexion</button>
     </nav>
   </div>
 </header>
+
+<dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-title">
+  <div class="auth-panel">
+    <div class="auth-heading">
+      <h2 id="auth-title">Connexion</h2>
+      <button class="auth-close" id="auth-close" type="button" aria-label="Fermer">Fermer</button>
+    </div>
+    <div id="auth-form-view">
+      <div class="auth-tabs" role="group" aria-label="Type d'authentification">
+        <button class="auth-tab" type="button" data-auth-mode="login" aria-pressed="true">Connexion</button>
+        <button class="auth-tab" type="button" data-auth-mode="signup" aria-pressed="false">Inscription</button>
+      </div>
+      <form class="auth-fields" id="auth-form">
+        <label class="auth-field" id="auth-name-field" hidden>
+          Nom affiché
+          <input id="auth-name" name="name" type="text" autocomplete="name" maxlength="80">
+        </label>
+        <label class="auth-field">
+          Adresse e-mail
+          <input id="auth-email" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label class="auth-field">
+          Mot de passe
+          <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required>
+        </label>
+        <button class="btn btn-primary auth-submit" id="auth-submit" type="submit">Se connecter</button>
+        <p class="auth-message" id="auth-message" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+    <div class="auth-account" id="auth-account" hidden>
+      <p class="auth-account-name" id="auth-account-name"></p>
+      <p class="auth-account-email" id="auth-account-email"></p>
+      <button class="btn btn-ghost" id="auth-sign-out" type="button">Se déconnecter</button>
+      <p class="auth-message" id="auth-account-message" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+</dialog>
 
 <section class="hero wrap" id="top">
   <div>
@@ -542,5 +615,6 @@
   <span>Prof le jour, développeur le soir.</span>
 </footer>
 
+<script type="module" src="auth.mjs"></script>
 </body>
 </html>
